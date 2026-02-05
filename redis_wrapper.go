@@ -68,7 +68,8 @@ func NewRedisWrapper(forceInclude bool, healthCheckInterval time.Duration) *Redi
 }
 
 func (rw *RedisWrapper) checkClusterAvailability(ctx context.Context, client *redis.Client, clusterConfig *ClusterConfig) (isHealthy bool, isSync bool) {
-	isHealthy = client.Ping(ctx).Err() == nil
+	err := client.Set(ctx, "__health__", "1", time.Millisecond).Err()
+	isHealthy = err == nil
 
 	req, err := http.NewRequest("GET", clusterConfig.Address, nil)
 	if err != nil {
@@ -214,10 +215,14 @@ func (rw *RedisWrapper) ExecuteWithFallback(ctx context.Context, fn func(*redis.
 		return errors.New("no healthy client available")
 	}
 
+	fmt.Printf("[ExecuteWithFallback] trying active: %s\n", active.name)
+
 	err := fn(active.client)
 	if err == nil {
 		return nil
 	}
+
+	fmt.Printf("[ExecuteWithFallback] active failed: %v, trying fallback\n", err)
 
 	// intentar en los demás healthy
 	rw.mu.RLock()

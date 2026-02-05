@@ -63,7 +63,7 @@ func startTest(wrapper *RedisWrapper) {
 			case <-ticker.C:
 				count++
 				key := fmt.Sprintf("key-%d", count)
-				err := wrapper.Execute(ctx, func(c *redis.Client) error {
+				err := wrapper.ExecuteWithFallback(ctx, func(c *redis.Client) error {
 					return c.Set(ctx, key, "value", 5*time.Second).Err()
 				})
 				now := time.Now().Format("15:04:05")
