@@ -12,11 +12,10 @@ var ctx = context.Background()
 
 func main() {
 	rc1 := redis.NewClient(&redis.Options{
-		Addr:       "localhost:12000",
-		Password:   "",
-		DB:         0,
-		Protocol:   2,
-		MaxRetries: 0,
+		Addr:     "localhost:12000",
+		Password: "",
+		DB:       0,
+		Protocol: 2,
 	})
 
 	rc2 := redis.NewClient(&redis.Options{
@@ -29,8 +28,16 @@ func main() {
 	// create a new wrapper that include no healthy servers
 	// and do healthcheck every 500 ms
 	wrapper := NewRedisWrapper(true, 500*time.Millisecond)
-	wrapper.AddClient(ctx, rc1, 0, "cluster primary")
-	wrapper.AddClient(ctx, rc2, 1, "cluster backup")
+	wrapper.AddClient(ctx, rc1, 0, "cluster primary", &ClusterConfig{
+		Address:  "https://localhost:9443/v1/bdbs/2",
+		User:     "admin@admin.com",
+		Password: "temporal123",
+	})
+	wrapper.AddClient(ctx, rc2, 1, "cluster backup", &ClusterConfig{
+		Address:  "https://localhost:9444/v1/bdbs/2",
+		User:     "admin@admin.com",
+		Password: "temporal123",
+	})
 
 	// this action is a blocker, because it waits to ping all the clients
 	wrapper.StartHealthCheck(ctx)
