@@ -68,30 +68,44 @@ func NewRedisWrapper(forceInclude bool, healthCheckInterval time.Duration) *Redi
 }
 
 func (rw *RedisWrapper) checkClusterAvailability(ctx context.Context, client *redis.Client, clusterConfig *ClusterConfig) (isHealthy bool, isSync bool) {
-	err := client.Set(ctx, "__health__", "1", time.Millisecond).Err()
-	isHealthy = err == nil
+	var wg sync.WaitGroup
 
-	req, err := http.NewRequest("GET", clusterConfig.Address, nil)
-	if err != nil {
-		return isHealthy, false
-	}
+	// Ejecutar PING y HTTP request en paralelo
+	wg.Go(func() {
+		val, err := client.Ping(ctx).Result()
+		isHealthy = (val == "PONG" && err == nil)
+	})
 
-	creds := fmt.Sprintf("%s:%s", clusterConfig.User, clusterConfig.Password)
-	auth := base64.StdEncoding.EncodeToString([]byte(creds))
-	req.Header.Set("Authorization", "Basic "+auth)
+	wg.Go(func() {
+		req, err := http.NewRequest("GET", clusterConfig.Address, nil)
+		if err != nil {
+			isSync = false
+			return
+		}
 
-	resp, err := rw.httpClient.Do(req)
-	if err != nil {
-		return isHealthy, false
-	}
-	defer resp.Body.Close()
+		creds := fmt.Sprintf("%s:%s", clusterConfig.User, clusterConfig.Password)
+		auth := base64.StdEncoding.EncodeToString([]byte(creds))
+		req.Header.Set("Authorization", "Basic "+auth)
 
-	var bdb BDBResponse
-	if err := json.NewDecoder(resp.Body).Decode(&bdb); err != nil {
-		return isHealthy, false
-	}
+		resp, err := rw.httpClient.Do(req)
+		if err != nil {
+			isSync = false
+			return
+		}
+		defer resp.Body.Close()
 
-	return isHealthy, isClusterSync(bdb.CRDTSources)
+		var bdb BDBResponse
+		if err := json.NewDecoder(resp.Body).Decode(&bdb); err != nil {
+			isSync = false
+			return
+		}
+
+		isSync = isClusterSync(bdb.CRDTSources)
+	})
+
+	wg.Wait()
+
+	return isHealthy, isSync
 }
 
 func isClusterSync(sources []CRDTSource) bool {
